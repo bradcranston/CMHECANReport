@@ -2,16 +2,82 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <style>
-      @import "./src/style.css";
-    </style>
-    <title>JSDev</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <title>AN Report</title>
   </head>
-  <body>
-    <h1>Alright. You're set.</h1>
-      <h2 class="tintedBlackLeft">Now build something amazing!</h2>
-      <p>JS in FM is amazing</p>
-    <button type="button">Click Me!</button>
+  <body class="bg-gray-100 font-sans leading-relaxed text-gray-800">
+    <div class="max-w-6xl mx-auto bg-white min-h-screen shadow-lg">
+      <header class="bg-white border-b-2 border-gray-200 px-6 py-4 sticky top-0 z-10 shadow-sm">
+        <div class="flex items-center justify-between flex-wrap gap-4">
+          <h1 class="text-2xl font-semibold text-gray-700">AN Report</h1>
+          
+          <form class="flex items-center gap-4 flex-wrap" id="dateForm">
+            <div class="flex items-center gap-2">
+              <label for="startDate" class="font-medium text-gray-600 text-sm whitespace-nowrap">Start:</label>
+              <input 
+                type="date" 
+                id="startDate" 
+                name="startDate" 
+                required
+                class="px-3 py-2 border border-gray-300 rounded text-sm transition-colors duration-300 bg-gray-50 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-1 focus:ring-blue-200"
+              >
+            </div>
+            
+            <div class="flex items-center gap-2">
+              <label for="endDate" class="font-medium text-gray-600 text-sm whitespace-nowrap">End:</label>
+              <input 
+                type="date" 
+                id="endDate" 
+                name="endDate" 
+                required
+                class="px-3 py-2 border border-gray-300 rounded text-sm transition-colors duration-300 bg-gray-50 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-1 focus:ring-blue-200"
+              >
+            </div>
+
+            <div class="flex items-center gap-2">
+              <label for="userFilter" class="font-medium text-gray-600 text-sm whitespace-nowrap">User:</label>
+              <select 
+                id="userFilter" 
+                name="userFilter"
+                required
+                class="px-3 py-2 border border-gray-300 rounded text-sm transition-colors duration-300 bg-gray-50 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-1 focus:ring-blue-200"
+              >
+                <option value="">-- Select User --</option>
+                <option value="Bart Keck">Bart Keck</option>
+                <option value="Ben Wadlow">Ben Wadlow</option>
+                <option value="Connie Ruane">Connie Ruane</option>
+                <option value="Dale Diethorn">Dale Diethorn</option>
+                <option value="David Cranston III">David Cranston III</option>
+                <option value="David Cranston Jr">David Cranston Jr</option>
+                <option value="David Cranston, Sr">David Cranston, Sr</option>
+                <option value="Eric Bambraugh">Eric Bambraugh</option>
+                <option value="Greg Engelmeyer">Greg Engelmeyer</option>
+                <option value="House">House</option>
+                <option value="Hunter Gilstrap">Hunter Gilstrap</option>
+                <option value="Marie Mulloney">Marie Mulloney</option>
+                <option value="Mike Hansen">Mike Hansen</option>
+                <option value="Reggie Cronin">Reggie Cronin</option>
+                <option value="Steve Moraca">Steve Moraca</option>
+                <option value="Tony Medlen">Tony Medlen</option>
+              </select>
+            </div>
+            
+            <button 
+              type="submit" 
+              class="px-4 py-2 bg-blue-500 text-white border-none rounded text-sm font-medium cursor-pointer transition-all duration-300 hover:bg-blue-600 active:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed submit-btn"
+            >
+              Generate Report
+            </button>
+          </form>
+        </div>
+      </header>
+      
+      <main class="p-6" id="reportContent">
+        <div class="text-center py-12 text-gray-500">
+          <p class="text-lg">Select date range and click "Generate Report" to view results.</p>
+        </div>
+      </main>
+    </div>
 
     <script type="module">
       import "./src/index.js";
