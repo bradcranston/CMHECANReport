@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const startDateInput = document.getElementById('startDate');
   const endDateInput = document.getElementById('endDate');
   const userFilterInput = document.getElementById('userFilter');
+  const showExcludedInput = document.getElementById('showExcluded');
   const submitBtn = document.querySelector('.submit-btn');
   const reportContent = document.getElementById('reportContent');
 
@@ -48,6 +49,14 @@ document.addEventListener('DOMContentLoaded', function() {
     callFileMakerScript('Manage: AN Report', parameter);
   });
 
+  // Handle show excluded toggle
+  showExcludedInput.addEventListener('change', function() {
+    // If we have current data, regenerate the report with the new filter
+    if (window.currentSalesData && window.currentActionNoteData) {
+      generateReport(window.currentSalesData, window.currentActionNoteData);
+    }
+  });
+
   // Function to show loading state
   function showLoadingState() {
     reportContent.innerHTML = `
@@ -57,6 +66,30 @@ document.addEventListener('DOMContentLoaded', function() {
         <p class="text-sm text-gray-500 mt-2">Report for ${formatDate(startDateInput.value)} to ${formatDate(endDateInput.value)} (User: ${userFilterInput.value})</p>
       </div>
     `;
+  }
+
+  // Function to update contacts count
+  function updateContactsCount() {
+    const allRows = document.querySelectorAll('tbody tr[data-sale-id]');
+    // Count only main rows (not description rows) that are visible
+    const visibleContacts = Array.from(allRows).filter(row => {
+      // Check if row is visible (not hidden)
+      const isVisible = row.style.display !== 'none';
+      
+      // Check if this is a main row (has account info in first cell, not empty)
+      const firstCell = row.querySelector('td:first-child');
+      const isMainRow = firstCell && firstCell.textContent.trim() !== '';
+      
+      return isVisible && isMainRow;
+    });
+    
+    const count = visibleContacts.length;
+    
+    // Update the table contacts count
+    const tableContactsCountValue = document.getElementById('tableContactsCountValue');
+    if (tableContactsCountValue) {
+      tableContactsCountValue.textContent = count;
+    }
   }
 
   // Function to format date for display
@@ -70,9 +103,12 @@ document.addEventListener('DOMContentLoaded', function() {
       // Check if the date is valid
       if (isNaN(date.getTime())) return dateString;
       
-      // Use date components directly to avoid timezone shifts
-      const options = { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' };
-      return date.toLocaleDateString('en-US', options);
+      // Format as MM/DD/YY
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const year = String(date.getFullYear()).slice(-2);
+      
+      return `${month}/${day}/${year}`;
     } catch (error) {
       console.warn('Error formatting date:', dateString, error);
       return dateString || '-';
@@ -109,7 +145,7 @@ document.addEventListener('DOMContentLoaded', function() {
     try {
       console.log('Exclude checkbox clicked, calling FileMaker script with data:', excludeData);
       
-      // Add or remove sale ID from excluded list
+      // Add or remove sale ID from excluded list for tracking purposes
       const saleId = excludeData.sale._ID;
       if (saleId) {
         if (excludeData.excludeValue === true) {
@@ -121,12 +157,9 @@ document.addEventListener('DOMContentLoaded', function() {
           // Remove from excluded list
           window.excludedSaleIds = window.excludedSaleIds.filter(id => id !== saleId);
         }
-        
-        // Regenerate the report to update rows and recalculate summaries
-        generateReport(window.currentSalesData, window.currentActionNoteData);
       }
       
-      // Call FileMaker script with the exclude data
+      // Call FileMaker script with the exclude data (but don't regenerate the report)
       callFileMakerScript('Manage: AN Report', excludeData);
       
       // Ensure button is always enabled
@@ -267,6 +300,43 @@ document.addEventListener('DOMContentLoaded', function() {
   // Initialize array to store excluded sales IDs
   window.excludedSaleIds = [];
 
+  // Function that FileMaker can call to populate user filter dropdown
+  window.populateUserFilter = function(salesDataJson) {
+    try {
+      const salesData = typeof salesDataJson === 'string' 
+        ? JSON.parse(salesDataJson) 
+        : salesDataJson;
+
+      const salesArray = salesData && salesData.value ? salesData.value : salesData;
+      
+      // Extract unique UserRef values
+      const uniqueUsers = new Set();
+      salesArray.forEach(sale => {
+        if (sale.UserRef && sale.UserRef.trim()) {
+          uniqueUsers.add(sale.UserRef.trim());
+        }
+      });
+
+      // Sort the users alphabetically
+      const sortedUsers = Array.from(uniqueUsers).sort();
+
+      // Clear existing options except the first one
+      userFilterInput.innerHTML = '<option value="">-- Select User --</option>';
+
+      // Add the unique users to the dropdown
+      sortedUsers.forEach(user => {
+        const option = document.createElement('option');
+        option.value = user;
+        option.textContent = user;
+        userFilterInput.appendChild(option);
+      });
+
+      console.log('User filter populated with', sortedUsers.length, 'users:', sortedUsers);
+    } catch (error) {
+      console.error('Error populating user filter:', error);
+    }
+  };
+
   // Function that FileMaker calls with sales data from OData query
   window.processSalesData = function(salesDataJson) {
     try {
@@ -276,6 +346,16 @@ document.addEventListener('DOMContentLoaded', function() {
         : salesDataJson;
 
       console.log('Processing sales data:', salesData);
+      
+      // Check if sales data is empty or invalid
+      const salesArray = salesData && salesData.value ? salesData.value : salesData;
+      if (!salesArray || !Array.isArray(salesArray) || salesArray.length === 0) {
+        console.error('No sales data found or data is empty');
+        showErrorState('No sales data found for the selected date range and user. Please check your criteria and try again.');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Generate Report';
+        return;
+      }
       
       // Reset excluded sales IDs when loading new data
       window.excludedSaleIds = [];
@@ -331,7 +411,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 Total: (Math.random() * 1000 + 100).toFixed(2),
                 Account: contact.account,
                 Account_ID: contact.accountId,
-                User: contact.user,
+                UserRef: contact.user,
                 Date: contact.date,
                 Status: 'Completed',
                 Contact: contact.name,
@@ -389,7 +469,7 @@ document.addEventListener('DOMContentLoaded', function() {
             saleId: sale._ID,
             date: sale.Date,
             status: sale.Status || '',
-            user: sale.User || '',
+            user: sale.UserRef || '',
             description: sale.Description || ''
           });
         }
@@ -404,7 +484,7 @@ document.addEventListener('DOMContentLoaded', function() {
   function generateActionNoteUrlBatches(uniqueContacts, userFilter) {
     const baseUrl = "https://71.112.215.162/fmi/odata/v4/CMHECCRM_Sandbox/ActionNote";
     // Keep only essential fields that are known to work with OData
-    const selectFields = "Account,User,Status,Contact,Account_ID,DocDescription,LastAction,DueDate,_ID"; 
+    const selectFields = "Account,UserRef,Status,Contact,Account_ID,DocDescription,DocNumber,DocType,Purpose,LastAction,DueDate,_ID"; 
     const batchSize = 5; // Reduced batch size for simpler URLs
     const urls = [];
     
@@ -426,7 +506,10 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Always add user filter - no parentheses
         const userFilterValue = userFilter.trim().replace(/'/g, "''");
-        filter = `${filter} and User eq '${userFilterValue}'`;
+        filter = `${filter} and UserRef eq '${userFilterValue}'`;
+        
+        // Add Status filter for 'New' records only
+        filter = `${filter} and Status eq 'Open'`;
         
         // Create the URL with minimal formatting
         const url = `${baseUrl}?$filter=${filter}&$select=${selectFields}`;
@@ -528,6 +611,42 @@ document.addEventListener('DOMContentLoaded', function() {
   // Keep the old function name for backward compatibility
   window.processContactData = window.processActionNoteData;
 
+  // Function to remove a row from the report (called by FileMaker)
+  window.removeReportRow = function(saleId) {
+    try {
+      console.log('Removing row with sale ID:', saleId);
+      
+      // Find and remove the row(s) with the matching sale ID
+      const rowsToRemove = document.querySelectorAll(`[data-sale-id="${saleId}"]`);
+      
+      if (rowsToRemove.length > 0) {
+        rowsToRemove.forEach(row => {
+          row.remove();
+        });
+        console.log(`Removed ${rowsToRemove.length} row(s) with sale ID: ${saleId}`);
+        
+        // Also remove from excluded list if it exists there
+        if (window.excludedSaleIds && window.excludedSaleIds.includes(saleId)) {
+          window.excludedSaleIds = window.excludedSaleIds.filter(id => id !== saleId);
+        }
+        
+        // Remove from stored row data
+        if (window.reportRowData) {
+          Object.keys(window.reportRowData).forEach(rowId => {
+            if (window.reportRowData[rowId].sale._ID === saleId) {
+              delete window.reportRowData[rowId];
+            }
+          });
+        }
+      } else {
+        console.warn('No rows found with sale ID:', saleId);
+      }
+      
+    } catch (error) {
+      console.error('Error removing row:', error);
+    }
+  };
+
   // Function to generate the final report
   function generateReport(salesData, actionNoteData) {
     // Store current data for later regeneration
@@ -535,8 +654,6 @@ document.addEventListener('DOMContentLoaded', function() {
     window.currentActionNoteData = actionNoteData;
     
     const salesArray = salesData && salesData.value ? salesData.value : salesData;
-    const startDate = startDateInput.value;
-    const endDate = endDateInput.value;
 
     // Initialize excludedSaleIds array if not already initialized
     if (!window.excludedSaleIds) {
@@ -545,8 +662,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Create ActionNote lookup map for easy access
     const actionNoteMap = {};
-    let totalSaleValue = 0;
-    let salesWithValue = 0;
     
     // Handle ActionNote data - expect OData format with value array
     let actionNoteArray = [];
@@ -556,14 +671,14 @@ document.addEventListener('DOMContentLoaded', function() {
       actionNoteArray = actionNoteData;
     }
     
-    // Group ActionNotes by Contact and User, keeping the one with due date closest to today
+    // Group ActionNotes by Contact and UserRef, keeping the one with due date closest to today
     // If there are past due dates, prioritize the furthest in the past
     const today = new Date();
     today.setHours(0, 0, 0, 0); // Normalize to start of day for comparison
     
     actionNoteArray.forEach(note => {
-      if (note.Contact && note.User) {
-        const key = `${note.Contact}-${note.User}`;
+      if (note.Contact && note.UserRef) {
+        const key = `${note.Contact}-${note.UserRef}`;
         
         // Parse current note's due date
         let dueDateCurrent = null;
@@ -595,7 +710,7 @@ document.addEventListener('DOMContentLoaded', function() {
         let shouldReplace = false;
         
         if (!actionNoteMap[key]) {
-          // First note for this contact-user combination
+          // First note for this contact-userref combination
           shouldReplace = true;
         } else if (!dueDateExisting && dueDateCurrent) {
           // Existing has no date, current has date - prefer the one with date
@@ -635,117 +750,77 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     });
 
-    // Generate summary statistics
-    const totalSales = salesArray.length;
-    const statusCounts = {};
-    const userCounts = {};
-    const uniqueContacts = new Set();
+    // Filter sales based on show excluded toggle
+    const showExcluded = showExcludedInput.checked;
+    let filteredSalesArray;
     
-    // Filter out excluded sales
-    const filteredSalesArray = salesArray.filter(sale => !window.excludedSaleIds.includes(sale._ID));
-    
-    // Calculate sale totals only for non-excluded sales
+    if (showExcluded) {
+      // Show all sales (including excluded ones)
+      filteredSalesArray = salesArray;
+    } else {
+      // Hide excluded sales (default behavior)
+      filteredSalesArray = salesArray.filter(sale => !sale.ANExclude);
+    }
+
+    // Group sales by contact name and account, keeping only the most recent sale for each combination
+    const uniqueSalesMap = new Map();
     filteredSalesArray.forEach(sale => {
-      // Count by status
-      const status = sale.Status || 'Unknown';
-      statusCounts[status] = (statusCounts[status] || 0) + 1;
-      
-      // Count by user
-      const user = sale.User || 'Unknown';
-      userCounts[user] = (userCounts[user] || 0) + 1;
-      
-      // Count unique contacts
-      if (sale.Contact) {
-        uniqueContacts.add(sale.Contact.trim());
+      if (sale.Contact && sale.Account) {
+        const key = `${sale.Contact.trim()}-${sale.Account.trim()}`;
+        const existingSale = uniqueSalesMap.get(key);
+        
+        if (!existingSale) {
+          // First sale for this contact/account combination
+          uniqueSalesMap.set(key, sale);
+        } else {
+          // Compare dates to keep the most recent sale
+          const currentDate = new Date(sale.Date);
+          const existingDate = new Date(existingSale.Date);
+          
+          if (currentDate > existingDate) {
+            // Current sale is more recent
+            uniqueSalesMap.set(key, sale);
+          }
+        }
       }
-      
-      // Add to sale totals
-      if (sale.Total && !isNaN(parseFloat(sale.Total))) {
-        totalSaleValue += parseFloat(sale.Total);
-        salesWithValue++;
-      }
+    });
+    
+    // Convert map back to array for display
+    const uniqueSalesArray = Array.from(uniqueSalesMap.values());
+
+    // Sort by account name alphabetically
+    uniqueSalesArray.sort((a, b) => {
+      const accountA = (a.Account || '').toUpperCase();
+      const accountB = (b.Account || '').toUpperCase();
+      return accountA.localeCompare(accountB);
     });
 
     const reportHtml = `
       <div class="space-y-6">
         <!-- Report Header -->
-        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <h2 class="text-lg font-semibold text-blue-800 mb-2">AN Report Summary</h2>
-          <p class="text-blue-700">Period: ${formatDate(startDate)} to ${formatDate(endDate)}</p>
-          ${userFilterInput.value ? `<p class="text-blue-700">User Filter: ${userFilterInput.value}</p>` : ''}
-          <p class="text-blue-600 text-sm">Generated: ${new Date().toLocaleString()}</p>
+        <div class="flex items-center justify-between bg-white border border-gray-200 rounded-lg px-4 py-3">
+          <h3 class="text-lg font-medium text-gray-800">Sales & Action Note Details</h3>
+          <span class="text-sm text-gray-600">Contacts: <span id="tableContactsCountValue" class="font-semibold">0</span></span>
         </div>
-
-        <!-- Summary Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
-          <div class="bg-white border border-gray-200 rounded-lg p-4 text-center">
-            <div class="text-2xl font-bold text-gray-800">${filteredSalesArray.length}</div>
-            <div class="text-sm text-gray-600">Total Sales</div>
-            ${totalSales !== filteredSalesArray.length ? 
-              `<div class="text-xs text-gray-500">(${totalSales - filteredSalesArray.length} excluded)</div>` : ''}
-          </div>
-          <div class="bg-white border border-gray-200 rounded-lg p-4 text-center">
-            <div class="text-2xl font-bold text-green-600">${statusCounts['Paid in Full'] || 0}</div>
-            <div class="text-sm text-gray-600">Paid in Full</div>
-          </div>
-          <div class="bg-white border border-gray-200 rounded-lg p-4 text-center">
-            <div class="text-2xl font-bold text-blue-600">${statusCounts['All Sent'] || 0}</div>
-            <div class="text-sm text-gray-600">All Sent</div>
-          </div>
-          <div class="bg-white border border-gray-200 rounded-lg p-4 text-center">
-            <div class="text-2xl font-bold text-orange-600">${uniqueContacts.size}</div>
-            <div class="text-sm text-gray-600">Unique Contacts</div>
-          </div>
-          <div class="bg-white border border-gray-200 rounded-lg p-4 text-center">
-            <div class="text-2xl font-bold text-purple-600">$${totalSaleValue.toLocaleString()}</div>
-            <div class="text-sm text-gray-600">Sale Total</div>
-          </div>
-        </div>
-
-        <!-- Status Breakdown -->
-        <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
-          <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
-            <h3 class="text-lg font-medium text-gray-800">Status Breakdown</h3>
-          </div>
-          <div class="p-4">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              ${Object.entries(statusCounts).map(([status, count]) => `
-                <div class="flex justify-between items-center p-2 bg-gray-50 rounded">
-                  <span class="font-medium">${status}</span>
-                  <span class="bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm">${count}</span>
-                </div>
-              `).join('')}
-            </div>
-          </div>
-        </div>
-
         <!-- Sales and Action Note Data Table -->
         <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
-          <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
-            <h3 class="text-lg font-medium text-gray-800">Sales & Action Note Details</h3>
-          </div>
           <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-200">
+            <table class="min-w-full">
               <thead class="bg-gray-50">
                 <tr>
-                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Account</th>
-                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact Name</th>
+                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Account<br>Contact Name</th>
                   <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Exclude</th>
-                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Doc Type</th>
-                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Number</th>
-                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Sale Date</th>
-                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sale Description</th>
-                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sale $ Total</th>
-                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">AN Do By Date</th>
-                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">AN Description</th>
-                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">AN Last Touch</th>
-                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">AN User</th>
+                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sale Description<br>Sale Date & Price</th>
+                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">AN Number</th>
+                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Follow-up Date<br>Description</th>
+                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Touch</th>
                 </tr>
               </thead>
-              <tbody class="bg-white divide-y divide-gray-200">
-                ${filteredSalesArray.map((sale, index) => {
-                  // Match action note by both Contact and User
-                  const actionNoteKey = `${sale.Contact}-${sale.User}`;
+              <tbody class="bg-white">
+                ${uniqueSalesArray.map((sale, index) => {
+                  // Match action note by both Contact and UserRef
+                  const actionNoteKey = `${sale.Contact}-${sale.UserRef}`;
                   const actionNote = actionNoteMap[actionNoteKey];
                   
                   // Store row data globally for access by click handler
@@ -753,20 +828,30 @@ document.addEventListener('DOMContentLoaded', function() {
                   
                   return `
                     <tr class="hover:bg-gray-50 cursor-pointer clickable-row" data-row-id="${rowId}" data-sale-id="${sale._ID}">
-                      <td class="px-3 py-3 text-sm text-gray-900">${sale.Account || 'N/A'}</td>
-                      <td class="px-3 py-3 text-sm font-medium text-gray-900">${sale.Contact || 'N/A'}</td>
-                      <td class="px-3 py-3 text-sm text-center">
-                        <input type="checkbox" ${sale.ANExclude ? 'checked' : ''} class="h-4 w-4 text-blue-600 border-gray-300 rounded exclude-checkbox cursor-pointer" data-row-id="${rowId}" data-sale-id="${sale._ID}">
+                      <td class="px-3 py-2 text-sm">
+                        <div class="font-medium text-gray-900">${sale.Account || 'N/A'}</div>
+                        <div class="text-gray-600">${sale.Contact || 'N/A'}</div>
                       </td>
-                      <td class="px-3 py-3 text-sm text-gray-900">Sale</td>
-                      <td class="px-3 py-3 text-sm text-gray-900">${sale.Number || 'N/A'}</td>
-                      <td class="px-3 py-3 whitespace-nowrap text-sm text-gray-900">${formatDate(sale.Date)}</td>
-                      <td class="px-3 py-3 text-sm text-gray-900">${sale.Description || 'N/A'}</td>
-                      <td class="px-3 py-3 text-sm text-gray-900">${sale.Total ? '$' + parseFloat(sale.Total).toLocaleString() : 'N/A'}</td>
-                      <td class="px-3 py-3 text-sm text-gray-900">${formatDate(actionNote?.DueDate)}</td>
-                      <td class="px-3 py-3 text-sm text-gray-900">${actionNote?.DocDescription || '-'}</td>
-                      <td class="px-3 py-3 text-sm text-gray-900">${formatDate(actionNote?.LastAction)}</td>
-                      <td class="px-3 py-3 text-sm text-gray-900">${actionNote?.User || '-'}</td>
+                      <td class="px-3 py-2 text-sm text-center">
+                        <button class="px-2 py-1 text-xs font-medium rounded ${sale.ANExclude ? 'bg-red-100 text-red-800 border border-red-300' : 'bg-gray-100 text-gray-800 border border-gray-300 hover:bg-gray-200'} exclude-button cursor-pointer" data-row-id="${rowId}" data-sale-id="${sale._ID}" data-excluded="${sale.ANExclude ? 'true' : 'false'}">
+                          ${sale.ANExclude ? 'Excluded' : 'Exclude'}
+                        </button>
+                      </td>
+                      <td class="px-3 py-2 text-sm">
+                        <div class="text-gray-900">${sale.Description || 'N/A'}</div>
+                        <div class="text-gray-600">${formatDate(sale.Date)} ${sale.Total ? '• $' + parseFloat(sale.Total).toLocaleString() : ''}</div>
+                      </td>
+                      <td class="px-3 py-2 text-sm text-gray-900">${actionNote ? (actionNote.DocType ? (actionNote.DocType + ' - ' + (actionNote.DocNumber || '')) : (actionNote.DocNumber || '')) : ''}</td>
+                      <td class="px-3 py-2 text-sm text-gray-900">${formatDate(actionNote?.DueDate)}</td>
+                      <td class="px-3 py-2 text-sm text-gray-900">${actionNote?.UserRef || sale.UserRef || '-'}</td>
+                      <td class="px-3 py-2 text-sm text-gray-900">${formatDate(actionNote?.LastAction)}</td>
+                    </tr>
+                    <tr class="border-b border-gray-200 hover:bg-gray-50 cursor-pointer clickable-row" data-row-id="${rowId}" data-sale-id="${sale._ID}">
+                      <td class="px-3 py-1"></td>
+                      <td class="px-3 py-1"></td>
+                      <td class="px-3 py-1"></td>
+                      <td class="px-3 py-1"></td>
+                      <td class="px-3 py-1 text-sm text-gray-600" colspan="3">${actionNote?.DocDescription || '-'}</td>
                     </tr>
                   `;
                 }).join('')}
@@ -774,42 +859,19 @@ document.addEventListener('DOMContentLoaded', function() {
             </table>
           </div>
         </div>
-
-        <!-- Sales Summary -->
-        ${salesWithValue > 0 ? `
-        <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
-          <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
-            <h3 class="text-lg font-medium text-gray-800">Sales Summary</h3>
-            ${window.excludedSaleIds.length > 0 ? `<p class="text-sm text-gray-600">(Excludes ${window.excludedSaleIds.length} excluded sales)</p>` : ''}
-          </div>
-          <div class="p-4">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div class="text-center">
-                <div class="text-2xl font-bold text-purple-600">${salesWithValue}</div>
-                <div class="text-sm text-gray-600">Sales with Values</div>
-              </div>
-              <div class="text-center">
-                <div class="text-2xl font-bold text-green-600">$${totalSaleValue.toLocaleString()}</div>
-                <div class="text-sm text-gray-600">Total Sale Value</div>
-              </div>
-              <div class="text-center">
-                <div class="text-2xl font-bold text-blue-600">$${salesWithValue > 0 ? (totalSaleValue / salesWithValue).toLocaleString() : '0'}</div>
-                <div class="text-sm text-gray-600">Average Sale Value</div>
-              </div>
-            </div>
-          </div>
-        </div>
-        ` : ''}
       </div>
     `;
 
     reportContent.innerHTML = reportHtml;
     
+    // Update contacts count after report is rendered
+    updateContactsCount();
+    
     // Store row data for click handlers and add event listeners
     window.reportRowData = {};
-    // Only use filtered sales array (excluding the excluded sales)
-    filteredSalesArray.forEach((sale, index) => {
-      const actionNoteKey = `${sale.Contact}-${sale.User}`;
+    // Use unique sales array (one per contact/account combination)
+    uniqueSalesArray.forEach((sale, index) => {
+      const actionNoteKey = `${sale.Contact}-${sale.UserRef}`;
       const actionNote = actionNoteMap[actionNoteKey];
       const rowId = `row-${index}`;
       
@@ -825,14 +887,14 @@ document.addEventListener('DOMContentLoaded', function() {
           Date: sale.Date || '',
           Description: sale.Description || '',
           Total: sale.Total || '',
-          User: sale.User || '',
+          UserRef: sale.UserRef || '',
           _ID: sale._ID || ''
         },
         actionNote: actionNote ? {
           DueDate: actionNote.DueDate || '',
           DocDescription: actionNote.DocDescription || '',
           LastAction: actionNote.LastAction || '',
-          User: actionNote.User || '',
+          UserRef: actionNote.UserRef || '',
           Account: actionNote.Account || '',
           Account_ID: actionNote.Account_ID || '',
           Status: actionNote.Status || '',
@@ -845,8 +907,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Add click event listeners to all clickable rows
     document.querySelectorAll('.clickable-row').forEach(row => {
       row.addEventListener('click', function(e) {
-        // Don't trigger row click if checkbox was clicked
-        if (e.target.classList.contains('exclude-checkbox')) {
+        // Don't trigger row click if exclude button was clicked
+        if (e.target.classList.contains('exclude-button')) {
           return;
         }
         
@@ -858,19 +920,67 @@ document.addEventListener('DOMContentLoaded', function() {
       });
     });
     
-    // Add click event listeners to all exclude checkboxes
-    document.querySelectorAll('.exclude-checkbox').forEach(checkbox => {
-      checkbox.addEventListener('click', function(e) {
+    // Add click event listeners to all exclude buttons
+    document.querySelectorAll('.exclude-button').forEach(button => {
+      button.addEventListener('click', function(e) {
         e.stopPropagation(); // Prevent row click from firing
         
         const rowId = this.getAttribute('data-row-id');
         const rowData = window.reportRowData[rowId];
         if (rowData) {
+          // Check if there is an ActionNote for this row
+          if (rowData.actionNote && rowData.actionNote._ID) {
+            // Display error and do not proceed
+            alert('Cannot exclude this record because it has an associated ActionNote.');
+            return;
+          }
+          
+          // Toggle the exclude state for data tracking
+          const currentExcluded = this.getAttribute('data-excluded') === 'true';
+          const newExcluded = !currentExcluded;
+          
+          // Update data attribute for tracking
+          this.setAttribute('data-excluded', newExcluded.toString());
+          
+          // Update button appearance and text based on new state
+          if (newExcluded) {
+            this.textContent = 'Excluded';
+            this.className = 'px-2 py-1 text-xs font-medium rounded bg-red-100 text-red-800 border border-red-300 exclude-button cursor-pointer';
+          } else {
+            this.textContent = 'Exclude';
+            this.className = 'px-2 py-1 text-xs font-medium rounded bg-gray-100 text-gray-800 border border-gray-300 hover:bg-gray-200 exclude-button cursor-pointer';
+          }
+          
+          // Update the sale.ANExclude data in the stored row data
+          if (window.reportRowData[rowId] && window.reportRowData[rowId].sale) {
+            window.reportRowData[rowId].sale.ANExclude = newExcluded;
+          }
+          
+          // Also update in the current sales data if available
+          if (window.currentSalesData && window.currentSalesData.value) {
+            const saleToUpdate = window.currentSalesData.value.find(sale => sale._ID === rowData.sale._ID);
+            if (saleToUpdate) {
+              saleToUpdate.ANExclude = newExcluded;
+            }
+          }
+          
+          // If "Show Excluded" is not checked and we're excluding the record, hide the row
+          if (newExcluded && !showExcludedInput.checked) {
+            // Find and hide all rows with this sale ID (main row and description row)
+            const rowsToHide = document.querySelectorAll(`[data-sale-id="${rowData.sale._ID}"]`);
+            rowsToHide.forEach(row => {
+              row.style.display = 'none';
+            });
+            // Update contacts count after hiding rows
+            updateContactsCount();
+          }
+          
           // Create a copy of the row data with mode set to 'exclude'
           const excludeData = {
             ...rowData,
             mode: 'exclude',
-            excludeValue: this.checked
+            excludeValue: newExcluded,
+            ANExclude: newExcluded
           };
           handleExcludeClick(excludeData);
         }
