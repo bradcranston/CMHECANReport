@@ -928,16 +928,16 @@ document.addEventListener('DOMContentLoaded', function() {
         const rowId = this.getAttribute('data-row-id');
         const rowData = window.reportRowData[rowId];
         if (rowData) {
-          // Check if there is an ActionNote for this row
-          if (rowData.actionNote && rowData.actionNote._ID) {
-            // Display error and do not proceed
-            alert('Cannot exclude this record because it has an associated ActionNote.');
-            return;
-          }
-          
           // Toggle the exclude state for data tracking
           const currentExcluded = this.getAttribute('data-excluded') === 'true';
           const newExcluded = !currentExcluded;
+          
+          // Only prevent exclusion (not un-exclusion) if there is an ActionNote
+          if (newExcluded && rowData.actionNote && rowData.actionNote._ID) {
+            // Display error and do not proceed with exclusion
+            alert('Cannot exclude this record because it has an associated ActionNote.');
+            return;
+          }
           
           // Update data attribute for tracking
           this.setAttribute('data-excluded', newExcluded.toString());
