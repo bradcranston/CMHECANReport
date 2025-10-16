@@ -159,7 +159,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
       }
       
-      // Call FileMaker script with the exclude data (but don't regenerate the report)
+      // Call FileMaker script with the exclude data
       callFileMakerScript('Manage: AN Report', excludeData);
       
       // Ensure button is always enabled
@@ -464,7 +464,7 @@ document.addEventListener('DOMContentLoaded', function() {
           // This is either a new contact or a more recent sale for existing contact
           contactMap.set(contactName, {
             name: contactName,
-            account: sale.Account ? sale.Account.trim() : '',
+            account: sale.AccountNickname ? sale.AccountNickname.trim() : '',
             accountId: sale.Account_ID || '',
             saleId: sale._ID,
             date: sale.Date,
@@ -482,7 +482,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // Function to generate batched OData URLs for ActionNote queries
   function generateActionNoteUrlBatches(uniqueContacts, userFilter) {
-    const baseUrl = "https://71.112.215.162/fmi/odata/v4/CMHECCRM_Sandbox/ActionNote";
+    const baseUrl = "https://71.112.215.162/fmi/odata/v4/CMHECCRM/ActionNote";
     // Keep only essential fields that are known to work with OData
     const selectFields = "Account,UserRef,Status,Contact,Account_ID,DocDescription,DocNumber,DocType,Purpose,LastAction,DueDate,_ID"; 
     const batchSize = 5; // Reduced batch size for simpler URLs
@@ -678,7 +678,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     actionNoteArray.forEach(note => {
       if (note.Contact && note.UserRef) {
-        const key = `${note.Contact}-${note.UserRef}`;
+        const key = `${note.Contact.toLowerCase()}-${note.UserRef.toLowerCase()}`;
         
         // Parse current note's due date
         let dueDateCurrent = null;
@@ -765,8 +765,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Group sales by contact name and account, keeping only the most recent sale for each combination
     const uniqueSalesMap = new Map();
     filteredSalesArray.forEach(sale => {
-      if (sale.Contact && sale.Account) {
-        const key = `${sale.Contact.trim()}-${sale.Account.trim()}`;
+      if (sale.Contact && sale.AccountNickname) {
+        const key = `${sale.Contact.trim()}-${sale.AccountNickname.trim()}`;
         const existingSale = uniqueSalesMap.get(key);
         
         if (!existingSale) {
@@ -790,8 +790,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Sort by account name alphabetically
     uniqueSalesArray.sort((a, b) => {
-      const accountA = (a.Account || '').toUpperCase();
-      const accountB = (b.Account || '').toUpperCase();
+      const accountA = (a.AccountNickname || '').toUpperCase();
+      const accountB = (b.AccountNickname || '').toUpperCase();
       return accountA.localeCompare(accountB);
     });
 
@@ -819,17 +819,17 @@ document.addEventListener('DOMContentLoaded', function() {
               </thead>
               <tbody class="bg-white">
                 ${uniqueSalesArray.map((sale, index) => {
-                  // Match action note by both Contact and UserRef
-                  const actionNoteKey = `${sale.Contact}-${sale.UserRef}`;
+                  // Match action note by both Contact and UserRef (case-insensitive)
+                  const actionNoteKey = `${sale.Contact.toLowerCase()}-${sale.UserRef.toLowerCase()}`;
                   const actionNote = actionNoteMap[actionNoteKey];
                   
                   // Store row data globally for access by click handler
                   const rowId = `row-${index}`;
                   
                   return `
-                    <tr class="hover:bg-gray-50 cursor-pointer clickable-row" data-row-id="${rowId}" data-sale-id="${sale._ID}">
+                    <tr class="hover:bg-gray-50 cursor-pointer clickable-row ${sale.ANExclude ? 'bg-red-50' : ''}" data-row-id="${rowId}" data-sale-id="${sale._ID}">
                       <td class="px-3 py-2 text-sm">
-                        <div class="font-medium text-gray-900">${sale.Account || 'N/A'}</div>
+                        <div class="font-medium text-gray-900">${sale.AccountNickname || 'N/A'}</div>
                         <div class="text-gray-600">${sale.Contact || 'N/A'}</div>
                       </td>
                       <td class="px-3 py-2 text-sm text-center">
@@ -842,16 +842,14 @@ document.addEventListener('DOMContentLoaded', function() {
                         <div class="text-gray-600">${formatDate(sale.Date)} ${sale.Total ? '• $' + parseFloat(sale.Total).toLocaleString() : ''}</div>
                       </td>
                       <td class="px-3 py-2 text-sm text-gray-900">${actionNote ? (actionNote.DocType ? (actionNote.DocType + ' - ' + (actionNote.DocNumber || '')) : (actionNote.DocNumber || '')) : ''}</td>
-                      <td class="px-3 py-2 text-sm text-gray-900">${formatDate(actionNote?.DueDate)}</td>
-                      <td class="px-3 py-2 text-sm text-gray-900">${actionNote?.UserRef || sale.UserRef || '-'}</td>
-                      <td class="px-3 py-2 text-sm text-gray-900">${formatDate(actionNote?.LastAction)}</td>
-                    </tr>
-                    <tr class="border-b border-gray-200 hover:bg-gray-50 cursor-pointer clickable-row" data-row-id="${rowId}" data-sale-id="${sale._ID}">
-                      <td class="px-3 py-1"></td>
-                      <td class="px-3 py-1"></td>
-                      <td class="px-3 py-1"></td>
-                      <td class="px-3 py-1"></td>
-                      <td class="px-3 py-1 text-sm text-gray-600" colspan="3">${actionNote?.DocDescription || '-'}</td>
+                      <td class="px-3 py-2 text-sm" colspan="3">
+                        <div class="grid grid-cols-3 gap-3">
+                          <div class="text-gray-900">${formatDate(actionNote?.DueDate)}</div>
+                          <div class="text-gray-900">${actionNote?.UserRef || sale.UserRef || '-'}</div>
+                          <div class="text-gray-900">${formatDate(actionNote?.LastAction)}</div>
+                        </div>
+                        <div class="text-gray-600 mt-1">${actionNote?.DocDescription || '-'}</div>
+                      </td>
                     </tr>
                   `;
                 }).join('')}
@@ -871,7 +869,7 @@ document.addEventListener('DOMContentLoaded', function() {
     window.reportRowData = {};
     // Use unique sales array (one per contact/account combination)
     uniqueSalesArray.forEach((sale, index) => {
-      const actionNoteKey = `${sale.Contact}-${sale.UserRef}`;
+      const actionNoteKey = `${sale.Contact.toLowerCase()}-${sale.UserRef.toLowerCase()}`;
       const actionNote = actionNoteMap[actionNoteKey];
       const rowId = `row-${index}`;
       
@@ -879,7 +877,7 @@ document.addEventListener('DOMContentLoaded', function() {
       window.reportRowData[rowId] = {
         mode: 'view',
         sale: {
-          Account: sale.Account || '',
+          Account: sale.AccountNickname || '',
           Contact: sale.Contact || '',
           Contact_ID: sale.Contact_ID || '',
           ANExclude: sale.ANExclude || false,
@@ -939,41 +937,84 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
           }
           
-          // Update data attribute for tracking
-          this.setAttribute('data-excluded', newExcluded.toString());
+          // Get the contact and userref for this row to find all matching rows
+          const contact = rowData.sale.Contact;
+          const userRef = rowData.sale.UserRef;
           
-          // Update button appearance and text based on new state
-          if (newExcluded) {
-            this.textContent = 'Excluded';
-            this.className = 'px-2 py-1 text-xs font-medium rounded bg-red-100 text-red-800 border border-red-300 exclude-button cursor-pointer';
-          } else {
-            this.textContent = 'Exclude';
-            this.className = 'px-2 py-1 text-xs font-medium rounded bg-gray-100 text-gray-800 border border-gray-300 hover:bg-gray-200 exclude-button cursor-pointer';
-          }
-          
-          // Update the sale.ANExclude data in the stored row data
-          if (window.reportRowData[rowId] && window.reportRowData[rowId].sale) {
-            window.reportRowData[rowId].sale.ANExclude = newExcluded;
-          }
-          
-          // Also update in the current sales data if available
-          if (window.currentSalesData && window.currentSalesData.value) {
-            const saleToUpdate = window.currentSalesData.value.find(sale => sale._ID === rowData.sale._ID);
-            if (saleToUpdate) {
-              saleToUpdate.ANExclude = newExcluded;
+          // Find all rows with the same Contact and UserRef combination (case-insensitive)
+          const matchingRowIds = [];
+          for (const [storedRowId, storedRowData] of Object.entries(window.reportRowData)) {
+            if (storedRowData.sale && 
+                storedRowData.sale.Contact && 
+                storedRowData.sale.UserRef &&
+                storedRowData.sale.Contact.toLowerCase() === contact.toLowerCase() && 
+                storedRowData.sale.UserRef.toLowerCase() === userRef.toLowerCase()) {
+              matchingRowIds.push(storedRowId);
             }
           }
           
-          // If "Show Excluded" is not checked and we're excluding the record, hide the row
-          if (newExcluded && !showExcludedInput.checked) {
-            // Find and hide all rows with this sale ID (main row and description row)
-            const rowsToHide = document.querySelectorAll(`[data-sale-id="${rowData.sale._ID}"]`);
-            rowsToHide.forEach(row => {
-              row.style.display = 'none';
+          // Update all matching buttons and row data
+          matchingRowIds.forEach(matchingRowId => {
+            const matchingButton = document.querySelector(`[data-row-id="${matchingRowId}"]`);
+            const matchingRow = document.querySelector(`tr[data-row-id="${matchingRowId}"]`);
+            
+            if (matchingButton) {
+              // Update data attribute for tracking
+              matchingButton.setAttribute('data-excluded', newExcluded.toString());
+              
+              // Update button appearance and text based on new state
+              if (newExcluded) {
+                matchingButton.textContent = 'Excluded';
+                matchingButton.className = 'px-2 py-1 text-xs font-medium rounded bg-red-100 text-red-800 border border-red-300 exclude-button cursor-pointer';
+              } else {
+                matchingButton.textContent = 'Exclude';
+                matchingButton.className = 'px-2 py-1 text-xs font-medium rounded bg-gray-100 text-gray-800 border border-gray-300 hover:bg-gray-200 exclude-button cursor-pointer';
+              }
+            }
+            
+            // Update row background styling
+            if (matchingRow) {
+              if (newExcluded) {
+                matchingRow.className = 'hover:bg-gray-50 cursor-pointer clickable-row bg-red-50';
+              } else {
+                matchingRow.className = 'hover:bg-gray-50 cursor-pointer clickable-row';
+              }
+            }
+            
+            // Update the sale.ANExclude data in the stored row data
+            if (window.reportRowData[matchingRowId] && window.reportRowData[matchingRowId].sale) {
+              window.reportRowData[matchingRowId].sale.ANExclude = newExcluded;
+            }
+            
+            // Only hide rows if "Show Excluded" is NOT checked AND we're excluding the record
+            if (newExcluded && !showExcludedInput.checked) {
+              // Find and hide all rows with this sale ID (main row and description row)
+              const rowsToHide = document.querySelectorAll(`[data-sale-id="${window.reportRowData[matchingRowId].sale._ID}"]`);
+              rowsToHide.forEach(row => {
+                row.style.display = 'none';
+              });
+            } else if (!newExcluded || showExcludedInput.checked) {
+              // Show rows if we're un-excluding OR if "Show Excluded" is checked
+              const rowsToShow = document.querySelectorAll(`[data-sale-id="${window.reportRowData[matchingRowId].sale._ID}"]`);
+              rowsToShow.forEach(row => {
+                row.style.display = '';
+              });
+            }
+          });
+          
+          // Also update in the current sales data if available (case-insensitive matching)
+          if (window.currentSalesData && window.currentSalesData.value) {
+            window.currentSalesData.value.forEach(sale => {
+              if (sale.Contact && sale.UserRef &&
+                  sale.Contact.toLowerCase() === contact.toLowerCase() && 
+                  sale.UserRef.toLowerCase() === userRef.toLowerCase()) {
+                sale.ANExclude = newExcluded;
+              }
             });
-            // Update contacts count after hiding rows
-            updateContactsCount();
           }
+          
+          // Update contacts count after showing/hiding rows
+          updateContactsCount();
           
           // Create a copy of the row data with mode set to 'exclude'
           const excludeData = {
@@ -983,6 +1024,14 @@ document.addEventListener('DOMContentLoaded', function() {
             ANExclude: newExcluded
           };
           handleExcludeClick(excludeData);
+          
+          // If "Show Excluded" is checked, regenerate the report to ensure proper display
+          if (showExcludedInput.checked && window.currentSalesData && window.currentActionNoteData) {
+            console.log('Show Excluded is checked - regenerating report to ensure proper display');
+            setTimeout(() => {
+              generateReport(window.currentSalesData, window.currentActionNoteData);
+            }, 100); // Small delay to ensure FileMaker updates are processed first
+          }
         }
       });
     });
