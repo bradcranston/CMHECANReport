@@ -841,7 +841,9 @@ document.addEventListener('DOMContentLoaded', function() {
                         <div class="text-gray-900">${sale.Description || 'N/A'}</div>
                         <div class="text-gray-600">${formatDate(sale.Date)} ${sale.Total ? '• $' + parseFloat(sale.Total).toLocaleString() : ''}</div>
                       </td>
-                      <td class="px-3 py-2 text-sm text-gray-900">${actionNote ? (actionNote.DocType ? (actionNote.DocType + ' - ' + (actionNote.DocNumber || '')) : (actionNote.DocNumber || '')) : ''}</td>
+                      <td class="px-3 py-2 text-sm text-gray-900">
+                        ${actionNote ? (actionNote.DocType ? ((actionNote.DocType === 'Proposal' ? 'P#' : actionNote.DocType === 'Lead' ? 'L#' : actionNote.DocType) + ' ' + (actionNote.DocNumber || '')) : (actionNote.DocNumber || '')) : ''}
+                      </td>
                       <td class="px-3 py-2 text-sm" colspan="3">
                         <div class="grid grid-cols-3 gap-3">
                           <div class="text-gray-900">${formatDate(actionNote?.DueDate)}</div>
