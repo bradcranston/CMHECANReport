@@ -454,7 +454,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Find the most recent sale for each contact
     salesArray.forEach(sale => {
       if (sale.Contact && sale.Contact.trim() && sale._ID) {
-        const contactName = sale.Contact.trim();
+        // Normalize whitespace: trim and replace multiple spaces with single space
+        const contactName = sale.Contact.trim().replace(/\s+/g, ' ');
         const saleDate = new Date(sale.Date);
         
         // Check if we already have this contact
@@ -500,8 +501,8 @@ document.addEventListener('DOMContentLoaded', function() {
       
       // For each contact in the batch, create a separate URL with very simple filter
       batch.forEach(contact => {
-        // Properly escape single quotes by doubling them for OData
-        const contactName = contact.name.replace(/'/g, "''");
+        // Normalize whitespace and properly escape single quotes by doubling them for OData
+        const contactName = contact.name.trim().replace(/\s+/g, ' ').replace(/'/g, "''");
         let filter = `Contact eq '${contactName}'`;
         
         // Always add user filter - no parentheses
@@ -676,9 +677,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const today = new Date();
     today.setHours(0, 0, 0, 0); // Normalize to start of day for comparison
     
+    console.log('Processing ActionNote array:', actionNoteArray.length, 'records');
+    
     actionNoteArray.forEach(note => {
+      console.log('ActionNote:', note.Contact, note.UserRef, note.DocType, note.DocNumber);
       if (note.Contact && note.UserRef) {
-        const key = `${note.Contact.toLowerCase()}-${note.UserRef.toLowerCase()}`;
+        // Normalize whitespace in contact name before creating key
+        const normalizedContact = note.Contact.trim().replace(/\s+/g, ' ').toLowerCase();
+        const key = `${normalizedContact}-${note.UserRef.toLowerCase()}`;
         
         // Parse current note's due date
         let dueDateCurrent = null;
@@ -749,6 +755,9 @@ document.addEventListener('DOMContentLoaded', function() {
         }
       }
     });
+    
+    console.log('ActionNote map created with', Object.keys(actionNoteMap).length, 'entries');
+    console.log('ActionNote map keys:', Object.keys(actionNoteMap));
 
     // Filter sales based on show excluded toggle
     const showExcluded = showExcludedInput.checked;
@@ -820,8 +829,12 @@ document.addEventListener('DOMContentLoaded', function() {
               <tbody class="bg-white">
                 ${uniqueSalesArray.map((sale, index) => {
                   // Match action note by both Contact and UserRef (case-insensitive)
-                  const actionNoteKey = `${sale.Contact.toLowerCase()}-${sale.UserRef.toLowerCase()}`;
+                  // Normalize whitespace in contact name before creating lookup key
+                  const normalizedContact = sale.Contact.trim().replace(/\s+/g, ' ').toLowerCase();
+                  const actionNoteKey = `${normalizedContact}-${sale.UserRef.toLowerCase()}`;
                   const actionNote = actionNoteMap[actionNoteKey];
+                  
+                  console.log(`Sale ${index}: Contact="${sale.Contact}", UserRef="${sale.UserRef}", Key="${actionNoteKey}", ActionNote:`, actionNote);
                   
                   // Store row data globally for access by click handler
                   const rowId = `row-${index}`;

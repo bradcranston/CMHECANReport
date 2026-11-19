@@ -1,0 +1,22 @@
+{
+	"@odata.context" : "https://71.112.215.162/fmi/odata/v4/CMHECCRM/$metadata#ActionNote(\"Account\",\"UserRef\",\"Status\",\"Contact\",\"Account_ID\",\"DocDescription\",\"DocNumber\",\"DocType\",\"Purpose\",\"LastAction\",\"DueDate\",\"_ID\")",
+	"value" : 
+	[
+		{
+			"@odata.editLink" : "https://71.112.215.162/fmi/odata/v4/CMHECCRM/ActionNote(15033)",
+			"@odata.id" : "https://71.112.215.162/fmi/odata/v4/CMHECCRM/ActionNote(15033)",
+			"Account" : "1-Stop Industrial Services",
+			"Account_ID" : "KP8G5MAR57FSFKFV8N1BJS",
+			"Contact" : "Sean Dively",
+			"DocDescription" : "Follow up on conveyor ",
+			"DocNumber" : "12783",
+			"DocType" : "Lead",
+			"DueDate" : "2025-12-19",
+			"LastAction" : null,
+			"Purpose" : null,
+			"Status" : "Open",
+			"UserRef" : "bartk",
+			"_ID" : "KP8G5MAR4MC0C1UBZZ7N5S"
+		}
+	]
+}
